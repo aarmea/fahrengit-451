@@ -39,8 +39,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro          # static config fragments
-      - ./nginx/geoblock:/etc/nginx/geoblock:ro       # rendered map snippet (written by watcher)
+      # NOTE: conf.d is intentionally NOT mounted from the host — the nginx
+      # Docker entrypoint renders templates/git.conf.template into conf.d at
+      # container start, substituting ${DOMAIN}. Mounting conf.d from the host
+      # would shadow that rendered output and break the virtual host.
+      - ./nginx/geoblock:/etc/nginx/geoblock:ro       # rendered by geoblock_watcher
       - ./certs/live:/etc/letsencrypt/live:ro
       - ./certs/archive:/etc/letsencrypt/archive:ro
       - ./certs/options-ssl-nginx.conf:/etc/letsencrypt/options-ssl-nginx.conf:ro
