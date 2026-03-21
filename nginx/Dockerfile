@@ -29,12 +29,18 @@ RUN wget -q "http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" \
 
 WORKDIR /usr/src/nginx-${NGINX_VERSION}
 
-# Build only the dynamic module (configure flags from `nginx -V`)
-RUN eval $(nginx -V 2>&1 | grep 'configure arguments:' | sed 's/configure arguments://') && \
-    ./configure \
-        $configure_args \
-        --add-dynamic-module=/usr/src/ngx_http_geoip2_module \
-    && make modules
+# Build only the dynamic module.
+# nginx -V prints configure arguments to stderr; we capture them into a file
+# and pass them to ./configure via xargs so the shell never tries to execute
+# them as a command (which is what breaks the eval approach).
+RUN nginx -V 2>&1 \
+    | grep 'configure arguments:' \
+    | sed 's/configure arguments://' \
+    | sed 's/ --add-dynamic-module[^ ]*//g' \
+    > /tmp/nginx_configure_args.txt \
+ && echo "--add-dynamic-module=/usr/src/ngx_http_geoip2_module" >> /tmp/nginx_configure_args.txt \
+ && xargs -a /tmp/nginx_configure_args.txt ./configure \
+ && make modules
 
 # ── Runtime image ─────────────────────────────────────────────────────────────
 FROM nginx:${NGINX_VERSION}-alpine
