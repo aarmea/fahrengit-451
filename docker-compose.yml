@@ -14,7 +14,7 @@ services:
       - FORGEJO__server__DISABLE_SSH=true
       - FORGEJO__service__DISABLE_REGISTRATION=${DISABLE_REGISTRATION:-true}
       - FORGEJO__database__DB_TYPE=sqlite3
-      - FORGEJO__database__PATH=/data/forgejo/forgejo.db
+      - FORGEJO__database__PATH=/data/gitea/forgejo.db
       - FORGEJO__log__LEVEL=Info
     volumes:
       - forgejo_data:/data
