@@ -41,7 +41,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-RULES_FILE      = Path("/app/geo_rules.yml")
+RULES_FILE      = Path("/app/host/geo_rules.yml")
 OUTPUT_DIR      = Path("/app/geoblock")
 NGINX_CONTAINER = os.environ.get("NGINX_CONTAINER_NAME", "nginx")
 

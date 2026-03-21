@@ -5,7 +5,7 @@ A single-VPS Docker Compose stack providing:
 - **Forgejo** — lightweight, Gitea-compatible Git hosting
 - **nginx** — reverse proxy with TLS termination and GeoIP2 blocking
 - **MaxMind GeoLite2** — IP → country + state/province database (auto-updated)
-- **geoblock_watcher** — watches `geo_rules.yml` and hot-reloads nginx when rules change
+- **geoblock_watcher** — watches `config/geo_rules.yml` and hot-reloads nginx when rules change
 - **Certbot** — automatic Let's Encrypt certificate renewal
 
 ---
@@ -16,8 +16,9 @@ A single-VPS Docker Compose stack providing:
 .
 ├── docker-compose.yml
 ├── .env.example                 ← copy to .env and fill in
-├── geo_rules.yml                ← ✏️  edit this to configure geo-blocking
 ├── bootstrap_certs.sh           ← run once before first `docker compose up`
+├── config/
+│   └── geo_rules.yml.example    ← copy to geo_rules.yml and edit to configure geo-blocking
 ├── nginx/
 │   ├── Dockerfile               ← builds nginx + GeoIP2 dynamic module
 │   ├── nginx.conf               ← main nginx config (loads GeoIP2 module)
@@ -51,6 +52,7 @@ A single-VPS Docker Compose stack providing:
 ### 1. Configure environment
 
 ```bash
+cp config/geo_rules.yml.example config/geo_rules.yml
 cp .env.example .env
 $EDITOR .env          # fill in DOMAIN, MAXMIND_*, LETSENCRYPT_EMAIL
 ```
@@ -90,14 +92,14 @@ docker compose up -d forgejo
 
 ### 4. Configure geo-blocking
 
-Edit `geo_rules.yml` — the watcher will detect the change within seconds and
+Edit `config/geo_rules.yml` — the watcher will detect the change within seconds and
 hot-reload nginx automatically. No restart needed.
 
 ---
 
 ## Geo-Blocking Configuration
 
-`geo_rules.yml` is the single source of truth. Example:
+`config/geo_rules.yml` is the single source of truth. Example:
 
 ```yaml
 repos:
@@ -150,7 +152,7 @@ https://www.iso.org/obp/ui/#search (search for the country, then see "Subdivisio
 ### Hot reload
 
 The watcher polls every 60 seconds and also reacts to inotify events
-immediately.  After saving `geo_rules.yml`, nginx will reload within seconds.
+immediately.  After saving `config/geo_rules.yml`, nginx will reload within seconds.
 No traffic is dropped — nginx does a graceful configuration reload (SIGHUP).
 
 ---

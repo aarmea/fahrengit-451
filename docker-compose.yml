@@ -89,7 +89,7 @@ services:
     container_name: geoblock_watcher
     restart: unless-stopped
     volumes:
-      - ./geo_rules.yml:/app/geo_rules.yml:ro
+      - ./config:/app/host:ro
       - ./nginx/geoblock:/app/geoblock          # shared with nginx (rw here)
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
