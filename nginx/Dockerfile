@@ -50,6 +50,11 @@ COPY --from=builder \
 # Main nginx config (loads the dynamic module at the top level)
 COPY nginx.conf /etc/nginx/nginx.conf
 
+# Virtual host template — the nginx Docker entrypoint runs envsubst on
+# /etc/nginx/templates/*.template and writes the results to /etc/nginx/conf.d/
+# automatically on container start, substituting any $VAR or ${VAR} present.
+COPY templates/git.conf.template /etc/nginx/templates/git.conf.template
+
 # GeoIP map directory (populated by geoblock_watcher at runtime)
 RUN mkdir -p /etc/nginx/geoblock
 
