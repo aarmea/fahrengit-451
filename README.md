@@ -1,12 +1,29 @@
-# Self-hosted Git (Forgejo) with State-Level Geo-Blocking
+# fahrengit-451
 
-A single-VPS Docker Compose stack providing:
+This repository provides Git hosting for open source and source-available projects with built-in access control by locale.
+
+Specifically, it provides the following, all running on one machine/VPS:
 
 - **Forgejo** — lightweight, Gitea-compatible Git hosting
 - **nginx** — reverse proxy with TLS termination and GeoIP2 blocking
 - **MaxMind GeoLite2** — IP → country + state/province database (auto-updated)
 - **geoblock_watcher** — watches `config/geo_rules.yml` and hot-reloads nginx when rules change
 - **Certbot** — automatic Let's Encrypt certificate renewal
+
+## Wait, why?
+
+You may want to publish an open source project that, while legal in your locale, does not comply with all laws somewhere else.
+
+This setup allows you to do publish your project without compromising its goals by simply disallowing access where those goals and the law conflict.
+
+This was the case for me with [shepherd-launcher](https://git.armeafamily.com/albert/shepherd-launcher),
+where implementing the OS-level age verification required in
+[California](https://leginfo.legislature.ca.gov/faces/billTextClient.xhtml?bill_id=202520260AB1043) (where GitHub is headquartered),
+[Brazil](https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2025/Lei/L15211.htm),
+and [potentially elsewhere](https://actonline.org/2025/01/14/the-abcs-of-age-verification-in-the-united-states/)
+would compromise the project's stated goals of parental autonomy and user privacy.
+
+*I am not a laywer and this is not legal advice.*
 
 ---
 
@@ -39,6 +56,7 @@ A single-VPS Docker Compose stack providing:
 
 | Requirement | Notes |
 |---|---|
+| A server or VPS located somewhere your project can legally be hosted | If unsure, **check with an attorney** |
 | Docker Engine ≥ 26 + Compose v2 | `docker compose version` |
 | A public domain name | DNS A record → your VPS IP |
 | Ports 80 and 443 open | Firewall / security group |
@@ -146,8 +164,9 @@ https://www.iso.org/obp/ui/#search (search for the country, then see "Subdivisio
 
 | Code | Meaning | When to use |
 |---|---|---|
-| `403` | Forbidden | General access restriction |
-| `451` | Unavailable For Legal Reasons | Legal / jurisdictional block (RFC 7725) |
+| `403` | Forbidden | General access restriction where you can disclose the repository exists |
+| `404` | Not Found | General access restriction where you can't |
+| `451` | Unavailable For Legal Reasons | Legal / jurisdictional block (RFC 7725) where you can explain why |
 
 ### Hot reload
 
@@ -226,12 +245,12 @@ docker compose exec geoipupdate cat /usr/share/GeoIP/GeoLite2-City_*/COPYRIGHT_A
 
 ## Security Notes
 
-- **SSH is disabled** in Forgejo; all Git operations use HTTPS.
+- **SSH is disabled** in Forgejo; all Git operations use HTTPS to simplify geofencing.
 - **Registration is disabled** by default after initial setup — only the admin
   can create accounts.
 - nginx **does not forward** `X-Forwarded-For` from downstream; it sets it
   from `$remote_addr` (the actual connected IP). This is intentional — we
-  explicitly trust the direct connection IP as stated in the requirements.
+  explicitly trust the direct connection IP.
 - The `docker.sock` mount on `geoblock_watcher` is the minimum necessary
   to send SIGHUP to the nginx container.  If this is a concern, you can
   replace it with a small privileged sidecar that only accepts a reload signal.
@@ -247,3 +266,13 @@ docker compose exec geoipupdate cat /usr/share/GeoIP/GeoLite2-City_*/COPYRIGHT_A
 | Rules not applied | Check `docker compose logs geoblock_watcher` — look for YAML parse errors |
 | Certificate errors | Ensure port 80 is open and DNS resolves before running `bootstrap_certs.sh` |
 | 502 Bad Gateway | Forgejo not healthy yet — check `docker compose logs forgejo` |
+
+---
+
+## Generative AI disclosure
+
+I used Claude both as a chatbot and as a coding agent to write and debug this configuration and
+reviewed manually prior to publishing. Where relevant, I included prompts in commit descriptions.
+
+Contributions written in whole or in part utilizing generative AI are welcome;
+however, they will be reviewed as if you wrote them yourself.
