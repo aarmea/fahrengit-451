@@ -1,0 +1,123 @@
+services:
+
+  # ── Forgejo ────────────────────────────────────────────────────────────────
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:9
+    container_name: forgejo
+    restart: unless-stopped
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - FORGEJO__server__DOMAIN=${DOMAIN}
+      - FORGEJO__server__ROOT_URL=https://${DOMAIN}/
+      - FORGEJO__server__HTTP_PORT=3000
+      - FORGEJO__server__DISABLE_SSH=true
+      - FORGEJO__service__DISABLE_REGISTRATION=${DISABLE_REGISTRATION:-true}
+      - FORGEJO__database__DB_TYPE=sqlite3
+      - FORGEJO__database__PATH=/data/forgejo/forgejo.db
+      - FORGEJO__log__LEVEL=Info
+    volumes:
+      - forgejo_data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── nginx (reverse proxy + GeoIP blocking) ─────────────────────────────────
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro          # static config fragments
+      - ./nginx/geoblock:/etc/nginx/geoblock:ro       # rendered map snippet (written by watcher)
+      - ./certs/live:/etc/letsencrypt/live:ro
+      - ./certs/archive:/etc/letsencrypt/archive:ro
+      - ./certs/options-ssl-nginx.conf:/etc/letsencrypt/options-ssl-nginx.conf:ro
+      - ./certs/ssl-dhparams.pem:/etc/letsencrypt/ssl-dhparams.pem:ro
+      - certbot_webroot:/var/www/certbot:ro
+      - geoip_db:/usr/share/GeoIP:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - internal
+    depends_on:
+      - forgejo
+    environment:
+      - DOMAIN=${DOMAIN}
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # ── MaxMind GeoIP database updater ────────────────────────────────────────
+  geoipupdate:
+    image: ghcr.io/maxmind/geoipupdate:v7
+    container_name: geoipupdate
+    restart: unless-stopped
+    environment:
+      - GEOIPUPDATE_ACCOUNT_ID=${MAXMIND_ACCOUNT_ID}
+      - GEOIPUPDATE_LICENSE_KEY=${MAXMIND_LICENSE_KEY}
+      - GEOIPUPDATE_EDITION_IDS=GeoLite2-City
+      - GEOIPUPDATE_FREQUENCY=72   # hours — MaxMind updates twice a week
+      - GEOIPUPDATE_DB_DIR=/usr/share/GeoIP
+    volumes:
+      - geoip_db:/usr/share/GeoIP
+    networks:
+      - internal
+
+  # ── Geo-block config watcher ───────────────────────────────────────────────
+  # Watches geo_rules.yml; re-renders the nginx map snippet and reloads nginx
+  # whenever rules change.
+  geoblock_watcher:
+    build:
+      context: ./geoblock_watcher
+      dockerfile: Dockerfile
+    container_name: geoblock_watcher
+    restart: unless-stopped
+    volumes:
+      - ./geo_rules.yml:/app/geo_rules.yml:ro
+      - ./nginx/geoblock:/app/geoblock          # shared with nginx (rw here)
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - internal
+    depends_on:
+      - nginx
+
+  # ── Certbot (Let's Encrypt) ────────────────────────────────────────────────
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    restart: unless-stopped
+    volumes:
+      - ./certs:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint: >
+      /bin/sh -c "
+        trap exit TERM;
+        while :; do
+          certbot renew --webroot -w /var/www/certbot --quiet;
+          sleep 12h &
+          wait $${!};
+        done
+      "
+
+volumes:
+  forgejo_data:
+  geoip_db:
+  certbot_webroot:
+  nginx_logs:
+
+networks:
+  internal:
+    driver: bridge

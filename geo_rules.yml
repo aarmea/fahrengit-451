@@ -1,0 +1,46 @@
+# geo_rules.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Define geo-blocking rules per repository.
+#
+# Each entry targets a Forgejo repository identified by its URL path
+# (/<owner>/<repo>).  When a request for that repo (or any sub-path, e.g.
+# /<owner>/<repo>.git or /<owner>/<repo>/raw/…) arrives from a blocked
+# locale, nginx returns the configured HTTP status and body.
+#
+# Locale format:
+#   Country only  : "US"            (ISO 3166-1 alpha-2)
+#   Country+State : "US-CA"         (ISO 3166-2, country + subdivision code)
+#
+# You can mix country-level and state-level rules in the same repo block.
+# More-specific rules (state) take precedence over less-specific ones (country)
+# because the watcher renders them first in the nginx map block.
+#
+# status: Any valid HTTP status code.  451 ("Unavailable For Legal Reasons")
+#         is the semantically correct choice for legal/jurisdiction blocks.
+# body  : Plain-text response body.  Keep it short — it is embedded directly
+#         in the nginx config as a string literal.
+# ─────────────────────────────────────────────────────────────────────────────
+
+repos:
+
+  - path: /alice/secret-project
+    rules:
+      - locales: ["US-CA", "US-TX"]
+        status: 451
+        body: "This repository is unavailable in your jurisdiction."
+      - locales: ["DE", "FR"]
+        status: 403
+        body: "Access to this repository is restricted in your country."
+
+  - path: /alice/another-repo
+    rules:
+      - locales: ["CN", "RU"]
+        status: 403
+        body: "Access denied."
+
+  # Template — copy and fill in for each additional repo:
+  # - path: /owner/repo-name
+  #   rules:
+  #     - locales: ["XX", "XX-YY"]
+  #       status: 403
+  #       body: "Access restricted."
