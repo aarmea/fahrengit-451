@@ -1,3 +1,4 @@
 .env
 certs/
 config/geo_rules.yml
+*.swp
