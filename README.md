@@ -14,7 +14,7 @@ Specifically, it provides the following, all running on one machine/VPS:
 
 You may want to publish an open source project that, while legal in your locale, does not comply with all laws somewhere else.
 
-This setup allows you to do publish your project without compromising its goals by simply disallowing access where those goals and the law conflict.
+This setup allows you to publish your project without compromising its goals by simply disallowing access where those goals and the law conflict.
 
 This was the case for me with [shepherd-launcher](https://git.armeafamily.com/albert/shepherd-launcher),
 where implementing the OS-level age verification required in
