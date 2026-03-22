@@ -86,15 +86,29 @@ def _normalize_file_path(body_file: str) -> str:
     return path if path.startswith("/") else f"/{path}"
 
 
+CRAWLER_MAP = """\
+# Common search engine crawlers — always bypass geo-blocks so repos stay indexed.
+map $http_user_agent $is_search_crawler {
+    default                                                           "";
+    "~*(googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|sogou|ia_archiver)" "bypass";
+}
+"""
+
+
 def render_clean(rules_data: dict[str, Any]) -> tuple[str, str, str]:
     """
     Returns (repo_maps_conf, repo_vars_conf, repo_locations_conf).
 
     For each repo we emit:
-      • One map per distinct status code:
-            map $geoip2_region_key $geoblock_<repo>_<status> { ... }
-        For text body rules, the value is the escaped body string when blocked.
-        For body_file rules, the value is "1" when blocked (a flag).
+      • Two maps per distinct status code:
+            map $geoip2_region_key $geoblock_<repo>_<status>_raw { ... }
+            map $is_search_crawler $geoblock_<repo>_<status> {
+                "bypass" "";
+                default  $geoblock_<repo>_<status>_raw;
+            }
+        The second map blanks the block for known search-engine crawlers.
+        For text body rules, the raw value is the escaped body string when blocked.
+        For body_file rules, the raw value is "1" when blocked (a flag).
       • One location block with one `if` per distinct status code.
         Text body:  if ($var != "") { return <status> "$var"; }
         File body:  error_page <status> @<var>_page;
@@ -151,10 +165,12 @@ def render_clean(rules_data: dict[str, Any]) -> tuple[str, str, str]:
         # ── One map variable per distinct status code ──────────────────────
         for status, info in status_info.items():
             var     = f"{base_var}_{status}"
+            var_raw = f"{var}_raw"
             entries = info["entries"]
 
+            # Raw geo map
             vars_blocks.append(f"# {path} — HTTP {status}")
-            vars_blocks.append(f"map $geoip2_region_key ${var} {{")
+            vars_blocks.append(f"map $geoip2_region_key ${var_raw} {{")
             vars_blocks.append(f'    default "";')
 
             # State-level rules first (more specific)
@@ -167,6 +183,13 @@ def render_clean(rules_data: dict[str, Any]) -> tuple[str, str, str]:
                 if "-" not in locale:
                     vars_blocks.append(f'    "~^{re.escape(locale)}(-|$)"  "{val}";')
 
+            vars_blocks.append("}")
+            vars_blocks.append("")
+
+            # Crawler override map — search bots are never blocked
+            vars_blocks.append(f"map $is_search_crawler ${var} {{")
+            vars_blocks.append(f'    "bypass" "";')
+            vars_blocks.append(f'    default  ${var_raw};')
             vars_blocks.append("}")
             vars_blocks.append("")
 
@@ -202,7 +225,7 @@ def render_clean(rules_data: dict[str, Any]) -> tuple[str, str, str]:
         loc_blocks.append("")
 
     maps_conf = header + "# (Region key mapping done inline in repo_vars.conf)\n"
-    vars_conf = header + "\n".join(vars_blocks)
+    vars_conf = header + CRAWLER_MAP + "\n".join(vars_blocks)
     locs_conf = header + "\n".join(loc_blocks + named_locs)
     return maps_conf, vars_conf, locs_conf
 
