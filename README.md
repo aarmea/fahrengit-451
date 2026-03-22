@@ -35,6 +35,7 @@ would compromise the project's stated goals of parental autonomy and user privac
 ├── .env.example                 ← copy to .env and fill in
 ├── bootstrap_certs.sh           ← run once before first `docker compose up`
 ├── config/
+│   ├── geoblock_pages/          ← place HTML "blocked" messages here
 │   └── geo_rules.yml.example    ← copy to geo_rules.yml and edit to configure geo-blocking
 ├── nginx/
 │   ├── Dockerfile               ← builds nginx + GeoIP2 dynamic module
@@ -132,7 +133,7 @@ repos:
       # Block all of Germany and France with HTTP 403
       - locales: ["DE", "FR"]
         status: 403
-        body: "Access to this repository is restricted in your country."
+        body_file: secret-project-de-fr.html  # HTML file in config/geoblock_pages/
 
   - path: /alice/another-repo
     rules:
