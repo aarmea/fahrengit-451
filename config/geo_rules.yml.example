@@ -19,6 +19,11 @@
 #         is the semantically correct choice for legal/jurisdiction blocks.
 # body  : Plain-text response body.  Keep it short — it is embedded directly
 #         in the nginx config as a string literal.
+# body_file : Path to a self-contained HTML file (relative to config/geoblock_pages/)
+#             served as the response body instead of a plain-text string.  The
+#             file must be self-contained (all CSS, JS, and image resources
+#             inlined) because it is served directly by nginx.
+#             Use either body or body_file — not both — for a given rule.
 # ─────────────────────────────────────────────────────────────────────────────
 
 repos:
@@ -44,3 +49,4 @@ repos:
   #     - locales: ["XX", "XX-YY"]
   #       status: 403
   #       body: "Access restricted."
+  #       # body_file: blocked.html           # OR: HTML file in config/geoblock_pages/

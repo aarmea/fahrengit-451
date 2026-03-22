@@ -44,6 +44,7 @@ services:
       # container start, substituting ${DOMAIN}. Mounting conf.d from the host
       # would shadow that rendered output and break the virtual host.
       - ./nginx/geoblock:/etc/nginx/geoblock:ro       # rendered by geoblock_watcher
+      - ./config/geoblock_pages:/etc/nginx/geoblock_pages:ro  # HTML block pages
       - ./certs/live:/etc/letsencrypt/live:ro
       - ./certs/archive:/etc/letsencrypt/archive:ro
       - ./certs/options-ssl-nginx.conf:/etc/letsencrypt/options-ssl-nginx.conf:ro
@@ -90,6 +91,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./config:/app/host:ro
+      - ./config/geoblock_pages:/app/geoblock_pages:ro  # HTML block pages (validation)
       - ./nginx/geoblock:/app/geoblock          # shared with nginx (rw here)
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
