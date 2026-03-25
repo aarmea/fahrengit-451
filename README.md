@@ -1,3 +1,5 @@
+tl;dr: `Not for use in California`, but for code
+
 # fahrengit-451
 
 This repository provides Git hosting for open source and source-available projects with built-in access control by locale.
