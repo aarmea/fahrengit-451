@@ -53,7 +53,6 @@ PROXY_DIRECTIVES = """\
     proxy_set_header   X-Real-IP         $remote_addr;
     proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
     proxy_set_header   X-Forwarded-Proto $scheme;
-    client_max_body_size 512m;
     proxy_request_buffering off;
     proxy_buffering         off;
     proxy_read_timeout      600s;
