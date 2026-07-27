@@ -234,9 +234,13 @@ JDK lives inside the service image:
 
 ```bash
 sudo apt install --no-install-recommends default-jre-headless
-# fill in FDROID_KEYSTOREPASS / FDROID_KEYPASS in .env first
 ./bootstrap_fdroid_key.sh
 ```
+
+It generates the keystore password itself and writes it into `.env` — there is
+nothing to fill in beforehand. (Leave `FDROID_KEYSTOREPASS`/`FDROID_KEYPASS`
+blank; they end up holding the same value, because keytool's PKCS12 keystores
+cannot have a key password distinct from the store password.)
 
 Do this **before** starting the service: `docker compose` bind-mounts
 `config/fdroid-keystore.jks`, and Docker silently creates a *directory* at that

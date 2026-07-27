@@ -7,9 +7,11 @@
 # every poll, so changes land without a restart (unlike the nginx location that
 # serves the result, which is baked into the nginx image).
 #
-# Devices add the repository by URL + fingerprint. Print the fingerprint with:
+# Devices add the repository by URL + fingerprint. bootstrap_fdroid_key.sh
+# prints it; to print it again later (note keytool writes "SHA-256", with the
+# hyphen, and colon-separated):
 #     keytool -list -keystore config/fdroid-keystore.jks -alias fdroid-index \
-#       | grep SHA256 | tr -d ': ' | tail -c 65
+#       | awk -F': ' '/SHA-?256/ { gsub(/:/, "", $2); print tolower($2); exit }'
 # `fdroid update` also logs the full ?fingerprint=… URL at the end of a run, and
 # writes an index.html + a QR code (index.png) into the published repo — so
 # https://<domain>/fdroid/repo/ is a working onboarding page for a phone.
