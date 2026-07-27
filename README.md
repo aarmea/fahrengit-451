@@ -229,12 +229,18 @@ pull, not a push.
 ### Setup
 
 **1. Create the index signing key** (once, and back it up — see the warning
-below):
+below). Needs `keytool`, which a JRE provides — no JDK required on the host, the
+JDK lives inside the service image:
 
 ```bash
+sudo apt install --no-install-recommends default-jre-headless
 # fill in FDROID_KEYSTOREPASS / FDROID_KEYPASS in .env first
 ./bootstrap_fdroid_key.sh
 ```
+
+Do this **before** starting the service: `docker compose` bind-mounts
+`config/fdroid-keystore.jks`, and Docker silently creates a *directory* at that
+path if the file does not exist yet.
 
 **2. Configure the sources:**
 

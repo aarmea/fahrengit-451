@@ -9,9 +9,15 @@
 # device has to remove and re-add the repository. It is the only piece of state
 # in this stack that cannot be regenerated — back it up off this machine.
 #
+# Run it BEFORE `docker compose up -d fdroid`: the service bind-mounts
+# config/fdroid-keystore.jks, and Docker silently creates a *directory* at that
+# path if the file does not exist yet.
+#
 # Prerequisites:
-#   • a JDK on the host (for keytool), or run it inside the fdroid image:
-#       docker compose run --rm --entrypoint bash fdroid /app/bootstrap.sh
+#   • keytool on the host — a JRE is enough, it does not need a full JDK:
+#       sudo apt install --no-install-recommends default-jre-headless
+#     (the JDK requirement is inside the fdroid image, where fdroidserver signs
+#     the index with jarsigner; see fdroid/Dockerfile)
 #   • .env present, with FDROID_KEYSTOREPASS / FDROID_KEYPASS filled in
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -40,8 +46,8 @@ if [[ -f "$KEYSTORE" ]]; then
 fi
 
 if ! command -v keytool >/dev/null 2>&1; then
-    echo "ERROR: keytool not found. Install a JDK (e.g. default-jdk-headless),"
-    echo "       or run this inside the fdroid service image."
+    echo "ERROR: keytool not found. A JRE is enough:"
+    echo "       sudo apt install --no-install-recommends default-jre-headless"
     exit 1
 fi
 
