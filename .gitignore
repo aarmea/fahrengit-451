@@ -1,4 +1,7 @@
 .env
 certs/
 config/geo_rules.yml
+config/fdroid.yml
+config/fdroid-keystore.jks
 *.swp
+__pycache__/
