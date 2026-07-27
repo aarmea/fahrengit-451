@@ -46,6 +46,7 @@ import tarfile
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 import yaml
@@ -109,6 +110,26 @@ def save_state(state: dict[str, str]) -> None:
 
 
 # ── Forgejo ───────────────────────────────────────────────────────────────────
+
+def internal_url(url: str) -> str:
+    """
+    Rewrite a Forgejo-issued absolute URL onto the internal service address.
+
+    Release assets come back from the API as `browser_download_url`, which is
+    built from Forgejo's ROOT_URL — i.e. the *public* https://<domain>/… address.
+    Following that from inside the compose network means trying to reach the
+    host's own public IP from a container on the bridge, which is refused
+    (there is no hairpin route back in). It would also put the download through
+    nginx and its geo-blocking, for no reason: the file is on this machine's
+    disk, one hop away at http://forgejo:3000.
+
+    Only the scheme and host change; the path is Forgejo's own route and is
+    served identically on the internal port.
+    """
+    parts = urlsplit(url)
+    base = urlsplit(FORGEJO)
+    return urlunsplit((base.scheme, base.netloc, parts.path, parts.query, ""))
+
 
 def latest_release(repo: str) -> dict[str, Any] | None:
     """The newest non-draft release, or None. Prereleases are skipped."""
@@ -176,7 +197,7 @@ def download_assets(release: dict[str, Any], glob: str) -> list[str]:
             names.append(name)
             continue
         log.info("  downloading %s (%.1f MB)...", name, asset.get("size", 0) / 1048576)
-        with requests.get(asset["browser_download_url"], stream=True,
+        with requests.get(internal_url(asset["browser_download_url"]), stream=True,
                           timeout=HTTP_TIMEOUT) as resp:
             resp.raise_for_status()
             tmp = dest.with_suffix(dest.suffix + ".part")
@@ -371,10 +392,13 @@ def main() -> None:
             # Re-read on every pass so a config edit lands without a restart.
             cfg = load_config()
             sync_once(cfg)
+        # On any failure the previous snapshot stays live and the state file is
+        # not advanced, so the next poll simply retries.
+        except requests.RequestException as exc:
+            # Network trouble is expected and self-healing — one line, no wall
+            # of traceback every poll.
+            log.error("Sync failed (network): %s", exc)
         except Exception as exc:
-            # Never publish a half-built repo: on any failure the previous
-            # snapshot stays live and the state file is not advanced, so the
-            # next poll retries from scratch.
             log.error("Sync failed: %s", exc, exc_info=True)
         time.sleep(interval)
 
