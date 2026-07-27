@@ -1,0 +1,45 @@
+# fdroid.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Which Forgejo repositories to publish APK releases from, and how the resulting
+# F-Droid repository describes itself.
+#
+# Copy to config/fdroid.yml and edit. The `fdroid` service re-reads this file on
+# every poll, so changes land without a restart (unlike the nginx location that
+# serves the result, which is baked into the nginx image).
+#
+# Devices add the repository by URL + fingerprint. bootstrap_fdroid_key.sh
+# prints it; to print it again later (note keytool writes "SHA-256", with the
+# hyphen, and colon-separated):
+#     keytool -list -keystore config/fdroid-keystore.jks -alias fdroid-index \
+#       | awk -F': ' '/SHA-?256/ { gsub(/:/, "", $2); print tolower($2); exit }'
+# `fdroid update` also logs the full ?fingerprint=… URL at the end of a run, and
+# writes an index.html + a QR code (index.png) into the published repo — so
+# https://<domain>/fdroid/repo/ is a working onboarding page for a phone.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Must end in /repo — fdroidserver requires it. Defaults to
+# https://${DOMAIN}/fdroid/repo when unset.
+repo_url: https://git.example.com/fdroid/repo
+
+repo_name: Example Apps
+repo_description: >
+  Android apps published from this Forgejo instance.
+
+# How often to ask Forgejo for new releases. Each poll is one cheap request per
+# source when nothing has changed.
+poll_interval_minutes: 15
+
+# One entry per source repository. All sources publish into the SAME index.
+#
+#   repo           <owner>/<repo> on this Forgejo instance. Must be public: the
+#                  service reads it unauthenticated over the internal network.
+#   metadata_path  Directory in that repo holding one <applicationId>.yml
+#                  fdroidserver metadata file per app. Read at the release tag,
+#                  so listings always match the APKs being published.
+#   asset_glob     Which release assets to publish (default "*.apk").
+#
+# Prereleases are always skipped, so -rc tags never reach devices.
+sources:
+  - repo: alice/my-android-app
+    metadata_path: dist/fdroid/metadata
+    asset_glob: "*.apk"

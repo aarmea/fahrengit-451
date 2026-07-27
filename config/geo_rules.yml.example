@@ -7,6 +7,16 @@
 # /<owner>/<repo>.git or /<owner>/<repo>/raw/…) arrives from a blocked
 # locale, nginx returns the configured HTTP status and body.
 #
+# CAUTION — paths served by a static location, e.g. /fdroid/:
+# These rules work because everything else is handled by the catch-all
+# `location /`, which any `^~ <path>` prefix beats.  A path that has its OWN
+# static location in git.conf.template is different: the watcher renders
+# `location ^~ <path>` with the trailing slash stripped, which is a SHORTER
+# prefix than e.g. `location ^~ /fdroid/`, and nginx picks the longest match.
+# The rule would look configured and never fire.  To geo-block such a path,
+# move the guard inside the static location instead — the $geoblock_* variables
+# are computed at http{} level and can be tested there with an `if`.
+#
 # Locale format:
 #   Country only  : "US"            (ISO 3166-1 alpha-2)
 #   Country+State : "US-CA"         (ISO 3166-2, country + subdivision code)

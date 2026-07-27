@@ -52,6 +52,7 @@ services:
       - certbot_webroot:/var/www/certbot:ro
       - geoip_db:/usr/share/GeoIP:ro
       - nginx_logs:/var/log/nginx
+      - fdroid_repo:/srv/fdroid:ro                    # served at /fdroid/
     networks:
       - internal
     depends_on:
@@ -99,6 +100,32 @@ services:
     depends_on:
       - nginx
 
+  # ── F-Droid repository generator ───────────────────────────────────────────
+  # Polls Forgejo for new releases with .apk assets and regenerates the static
+  # F-Droid repository nginx serves at /fdroid/, so Android apps hosted here can
+  # be installed and updated from a phone. Reads Forgejo over the internal
+  # network — no credentials, no public egress. See fdroid/sync.py.
+  fdroid:
+    build:
+      context: ./fdroid
+      dockerfile: Dockerfile
+    container_name: fdroid
+    restart: unless-stopped
+    environment:
+      - DOMAIN=${DOMAIN}
+      - FDROID_KEYSTOREPASS=${FDROID_KEYSTOREPASS}
+      - FDROID_KEYPASS=${FDROID_KEYPASS}
+    volumes:
+      - ./config/fdroid.yml:/app/config/fdroid.yml:ro
+      # The index signing key. Permanent: its fingerprint is baked into the
+      # repository URL every device is configured with. Back it up off-box.
+      - ./config/fdroid-keystore.jks:/keystore.jks:ro
+      - fdroid_repo:/srv/fdroid                 # rw here, :ro in nginx
+    networks:
+      - internal
+    depends_on:
+      - forgejo
+
   # ── Certbot (Let's Encrypt) ────────────────────────────────────────────────
   certbot:
     image: certbot/certbot:latest
@@ -122,6 +149,7 @@ volumes:
   geoip_db:
   certbot_webroot:
   nginx_logs:
+  fdroid_repo:
 
 networks:
   internal:

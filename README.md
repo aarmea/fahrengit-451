@@ -11,6 +11,7 @@ Specifically, it provides the following, all running on one machine/VPS:
 - **MaxMind GeoLite2** — IP → country + state/province database (auto-updated)
 - **geoblock_watcher** — watches `config/geo_rules.yml` and hot-reloads nginx when rules change
 - **Certbot** — automatic Let's Encrypt certificate renewal
+- **fdroid** *(optional)* — publishes an [F-Droid](https://f-droid.org) repository from the `.apk` assets attached to your Forgejo releases, so Android apps hosted here can be installed and updated from a phone
 
 ## Wait, why?
 
@@ -36,9 +37,14 @@ would compromise the project's stated goals of parental autonomy and user privac
 ├── docker-compose.yml
 ├── .env.example                 ← copy to .env and fill in
 ├── bootstrap_certs.sh           ← run once before first `docker compose up`
+├── bootstrap_fdroid_key.sh      ← run once before enabling the F-Droid service
 ├── config/
 │   ├── geoblock_pages/          ← place HTML "blocked" messages here
-│   └── geo_rules.yml.example    ← copy to geo_rules.yml and edit to configure geo-blocking
+│   ├── geo_rules.yml.example    ← copy to geo_rules.yml and edit to configure geo-blocking
+│   └── fdroid.yml.example       ← copy to fdroid.yml to publish an F-Droid repo
+├── fdroid/
+│   ├── Dockerfile
+│   └── sync.py                  ← polls Forgejo releases, regenerates the repo
 ├── nginx/
 │   ├── Dockerfile               ← builds nginx + GeoIP2 dynamic module
 │   ├── nginx.conf               ← main nginx config (loads GeoIP2 module)
@@ -205,6 +211,124 @@ Or add this as a cron job on the host:
 ```cron
 0 */12 * * * docker compose -f /path/to/docker-compose.yml exec nginx nginx -s reload
 ```
+
+---
+
+## Publishing an F-Droid Repository (optional)
+
+If projects hosted here ship Android apps, the `fdroid` service turns their
+release `.apk` assets into an [F-Droid](https://f-droid.org) repository served at
+`https://<domain>/fdroid/repo`. Users add it once in the F-Droid client and get
+updates from then on — on Android 12+, silently in the background for apps
+F-Droid installed itself.
+
+The service polls Forgejo over the internal compose network, so it needs **no
+credentials, no deploy key, and no changes to anyone's CI**. Publishing is a
+pull, not a push.
+
+### Setup
+
+**1. Create the index signing key** (once, and back it up — see the warning
+below). Needs `keytool`, which a JRE provides — no JDK required on the host, the
+JDK lives inside the service image:
+
+```bash
+sudo apt install --no-install-recommends default-jre-headless
+./bootstrap_fdroid_key.sh
+```
+
+It generates the keystore password itself and writes it into `.env` — there is
+nothing to fill in beforehand. (Leave `FDROID_KEYSTOREPASS`/`FDROID_KEYPASS`
+blank; they end up holding the same value, because keytool's PKCS12 keystores
+cannot have a key password distinct from the store password.)
+
+Do this **before** starting the service: `docker compose` bind-mounts
+`config/fdroid-keystore.jks`, and Docker silently creates a *directory* at that
+path if the file does not exist yet.
+
+**2. Configure the sources:**
+
+```bash
+cp config/fdroid.yml.example config/fdroid.yml
+$EDITOR config/fdroid.yml        # repo_url, repo_name, and one entry per source repo
+```
+
+**3. Start it, and rebuild nginx so it serves `/fdroid/`:**
+
+```bash
+docker compose up -d --build fdroid nginx
+docker compose logs -f fdroid
+```
+
+The nginx rebuild is required rather than a reload: `conf.d` is baked into the
+image (the template is rendered at container start), so a new `location` block
+only exists after a rebuild.
+
+### What a source repository has to provide
+
+- A public Forgejo repo with releases carrying `.apk` assets.
+- One `<applicationId>.yml` [fdroidserver metadata
+  file](https://f-droid.org/docs/Build_Metadata_Reference/) per app, in the
+  directory named by `metadata_path`. These are read **at the release tag**, so
+  listings can never describe a different version than the APKs do.
+- `AllowedAPKSigningKeys` set in each of those files, pinning the certificate the
+  APKs are signed with. **This is load-bearing** — see below.
+
+Prereleases are skipped, so `-rc` tags never reach devices.
+
+### Why the signing-key pin matters
+
+This service republishes release assets automatically, and F-Droid installs are
+in-place upgrades on real devices. `AllowedAPKSigningKeys` is what stops an APK
+signed with a different key from being served as an upgrade.
+
+It needs checking, because a rejection is *not* an error. Given a mismatch,
+`fdroid update` warns, drops the APK, signs an index without it, and exits 0:
+
+```
+WARNING: Removing repo/example_1.0.0.apk
+INFO: Creating signed index with this key (SHA256): …
+INFO: Finished
+```
+
+A signed index, a success exit, and one app silently missing. `sync.py`
+therefore verifies every downloaded APK actually appears in `index-v2.json` and
+refuses to publish otherwise, leaving the previously published repository live.
+
+### Operational notes
+
+- **The signing key is permanent.** Its fingerprint is part of the repository URL
+  every device is configured with. `config/fdroid-keystore.jks` is the one thing
+  in this stack that cannot be regenerated — back it up off the machine.
+- **Disk grows with releases.** Every version stays installable
+  (`archive_older: 0`), so the volume grows by the size of each release's APKs.
+  To cap it, set `archive_older` in `sync.py`'s generated config, or prune
+  `work/repo/` by hand.
+- **Publishing is atomic.** Each run builds a `repo-<tag>` snapshot (hardlinks,
+  so it is instant and free) and moves a symlink. Rollback is re-pointing
+  `/srv/fdroid/repo` at an older snapshot; the last three are kept.
+- **Force a republish** with `docker compose restart fdroid` after deleting
+  `state.json`:
+
+  ```bash
+  docker compose exec fdroid rm /srv/fdroid/work/state.json
+  docker compose restart fdroid
+  ```
+
+- **The repository is not geo-blocked** by default, which is deliberate — see the
+  note in `config/geo_rules.yml.example` before trying to add a rule for it.
+- **Testing changes to `sync.py`** — `fdroid/test_sync.py` exercises the whole
+  flow (including the wrong-key refusal) against a real instance, in a temp tree
+  that touches neither the volume nor the live repository:
+
+  ```bash
+  sudo apt install --no-install-recommends fdroidserver default-jdk-headless
+  FORGEJO_URL=https://git.example.com TEST_REPO=alice/my-app \
+      python3 fdroid/test_sync.py
+  ```
+
+  It downloads the real release assets, so expect it to pull tens of MB. The
+  source repo must already carry its metadata at its latest release tag.
 
 ---
 
