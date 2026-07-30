@@ -25,7 +25,7 @@ Layout inside the fdroid_repo volume
 /srv/fdroid/work/config.yml       generated per run from /app/config/fdroid.yml
 /srv/fdroid/work/metadata/*.yml   app listings, from the source repo's tag
 /srv/fdroid/work/repo/            APKs accumulate here across releases
-/srv/fdroid/work/state.json       last published tag per source
+/srv/fdroid/work/state.json       last published tag + asset fingerprint per source
 /srv/fdroid/repo-<tag>/           published snapshots (hardlinks; last 3 kept)
 /srv/fdroid/repo                  symlink → the live snapshot; nginx serves this
 
@@ -96,7 +96,7 @@ def load_config() -> dict[str, Any]:
     return cfg
 
 
-def load_state() -> dict[str, str]:
+def load_state() -> dict[str, Any]:
     if STATE_FILE.exists():
         try:
             return json.loads(STATE_FILE.read_text())
@@ -105,7 +105,7 @@ def load_state() -> dict[str, str]:
     return {}
 
 
-def save_state(state: dict[str, str]) -> None:
+def save_state(state: dict[str, Any]) -> None:
     STATE_FILE.write_text(json.dumps(state, indent=2, sort_keys=True))
 
 
@@ -182,6 +182,25 @@ def fetch_metadata(repo: str, tag: str, metadata_path: str) -> int:
         raise RuntimeError(f"{repo}@{tag} has no metadata under {metadata_path}/")
     log.info("%s@%s: fetched %d metadata file(s).", repo, tag, count)
     return count
+
+
+def asset_fingerprint(release: dict[str, Any], glob: str) -> list[list]:
+    """
+    Sorted `[name, size]` pairs for the release assets matching `glob`.
+
+    State keys on this rather than on the tag alone, because a release can gain
+    assets *after* the tag has stayed the same — e.g. a CI job that uploads
+    APKs sequentially finishes the second one a few minutes after the first,
+    or a maintainer attaches a missing package to an existing release by hand.
+    A tag-only skip check would freeze the incomplete first snapshot in place
+    forever (this exact bug shipped once: shepherd-launcher 0.3.2 was published
+    without its media package because the media APK arrived on a later poll).
+    """
+    return sorted(
+        [a["name"], a.get("size", 0)]
+        for a in release.get("assets", [])
+        if fnmatch.fnmatch(a["name"], glob)
+    )
 
 
 def download_assets(release: dict[str, Any], glob: str) -> list[str]:
@@ -343,14 +362,24 @@ def sync_once(cfg: dict[str, Any]) -> None:
             continue
 
         tag = release["tag_name"]
-        if state.get(repo) == tag:
+        fingerprint = asset_fingerprint(release, glob)
+
+        # Skip only when both the tag AND the set of matching assets are
+        # unchanged from the last publish. See asset_fingerprint() for why
+        # the tag alone is not enough. A legacy string entry (from before
+        # this field existed) fails the isinstance check and re-processes
+        # once, which is exactly what we want on upgrade.
+        prior = state.get(repo)
+        if (isinstance(prior, dict)
+                and prior.get("tag") == tag
+                and prior.get("assets") == fingerprint):
             log.debug("%s: %s already published.", repo, tag)
             continue
 
         log.info("%s: publishing %s", repo, tag)
         fetch_metadata(repo, tag, metadata_path)
         published += download_assets(release, glob)
-        state[repo] = tag
+        state[repo] = {"tag": tag, "assets": fingerprint}
         newest_tag = tag
 
     if not published:

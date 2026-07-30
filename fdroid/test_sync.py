@@ -149,5 +149,32 @@ kept = sorted(p.name for p in TMP.glob("repo-*"))
 assert len(kept) == sync.KEEP_SNAPSHOTS, kept
 print(f"  OK: kept {kept}, live -> {(TMP / 'repo').readlink()}")
 
+banner("TEST 7: a release that gains an asset later is re-published")
+# Regression test for the race where the initial poll saw the release before
+# every APK had finished uploading. The old skip check was tag-only, so the
+# missing package was frozen out of the index forever. Simulate a partial
+# earlier publish by rewriting state to drop one asset from the fingerprint,
+# then run sync_once and check it noticed and refreshed state.
+full = sync.asset_fingerprint(release, "*.apk")
+if len(full) < 2:
+    print(f"  SKIPPED: {REPO_UNDER_TEST} release has <2 matching assets; "
+          "cannot simulate a partial publish.")
+else:
+    sync.save_state({REPO_UNDER_TEST: {"tag": tag, "assets": full[:-1]}})
+    dropped = full[-1][0]
+    sync.sync_once(CFG)
+    refreshed = sync.load_state()[REPO_UNDER_TEST]
+    assert refreshed["assets"] == full, \
+        f"state was not refreshed: {refreshed}"
+    live_index = (TMP / "repo" / "index-v2.json").read_text()
+    assert dropped in live_index, f"{dropped} did not reach the live index"
+    print(f"  OK: re-published; {dropped} now indexed")
+
+    # And the inverse: with an intact fingerprint, the next sync must be a no-op.
+    before = (TMP / "repo").readlink()
+    sync.sync_once(CFG)
+    assert (TMP / "repo").readlink() == before, "unexpected republish"
+    print(f"  OK: unchanged release did not trigger a republish")
+
 banner("ALL TESTS PASSED")
 shutil.rmtree(TMP, ignore_errors=True)
